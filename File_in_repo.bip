@@ -1,0 +1,668 @@
+@cpp(src="ext-cpp/utilities.cpp,ext-cpp/trace_helper.cpp,ext-cpp/proba_helper.cpp",include="utilities.hpp,trace_helper.hpp,proba_helper.hpp")
+
+package pbft
+  extern function printf(string, int, int)
+  extern function printf(string, float, float ,float)
+  extern function printf(string, int, float)
+  extern function printf(string, float, float)
+  extern function printf(string, int, int,int)
+  extern function printf(string,int)
+  extern function printf(string,float)
+
+ //changing the view where input : (id current node, max node)  output: new view
+  extern function int modulo( int, int) 
+  extern function int readBlock(  ) 
+  extern function int checkBlock( int ) 
+
+
+  port type Port_t()
+  port type Port_blockreader( int BLOCK)
+  port type Port_elected( int PRIMARY_NODE ,int NETWORK_VIEW)
+  port type Port_preprepare( int BLOCK  )
+  port type Port_prepare(   )
+  port type Port_commit(   )
+  port type Port_reply(   )
+  port type Port_faulty(   )
+
+  port type Port_viewchange(   )
+
+  port type Port_update( int DEVICE_ID, int  VALUE )
+  port type Port_read( int DEVICE_ID, int  VALUE )
+  port type Port_create( int DEVICE_ID, int  VALUE )
+  port type Port_all( int DEVICE_ID, int  VALUE )
+  port type Port_ordererBlock( int BLOCK  )
+  port type Port_ordererVALUE( int VALUE  )
+
+atom type Device ( int id )
+ data int DEVICE_ID
+ data int VALUE
+ data int GUARD
+
+ port Port_t p0()
+ port Port_t p1()
+ export port Port_update updateValue(  DEVICE_ID,  VALUE)
+
+ place START,  UPDATE
+
+ initial to START do { GUARD = 1; DEVICE_ID = id; 	printf("var int device %d\n",  DEVICE_ID);}
+ on  p0  from START  to UPDATE provided (GUARD >0 ) do { GUARD = GUARD - 1 ; VALUE = 5 ;}
+ on  updateValue  from UPDATE  to START do { printf("var int DEVICE %d  IS BRODCASTING VALUE %d \n",  DEVICE_ID, VALUE ); }
+
+end
+
+//connector
+connector type connupdateValue(Port_update device, Port_update smart)
+  define device smart
+  on device smart  down { smart.DEVICE_ID =device.DEVICE_ID;  smart.VALUE =device.VALUE;}
+end
+connector type connreadValue(Port_read device, Port_read smart)
+  define device smart
+end
+connector type conncreateValue(Port_create device, Port_create smart)
+  define device smart
+end
+connector type connallValue(Port_all device, Port_all smart)
+  define device smart
+end 
+connector type connordererBlock(Port_ordererBlock device, Port_ordererBlock smart)
+  define device smart
+  on device smart  down { smart.BLOCK =device.BLOCK;}
+end
+connector type connordererVALUE(Port_ordererVALUE device, Port_ordererVALUE smart)
+  define device smart
+  on device smart  down { smart.VALUE =device.VALUE;}
+end
+
+atom type Acl( )
+ data int DEVICE_ID
+ data int VALUE
+
+ data int GUARD
+
+ data int UPDATE
+ data int READ
+ data int CREATE
+ data int ALL
+ data int DENY
+ data int ALLOW
+
+ port Port_t p0()
+ port Port_t p1()
+ port Port_t p2()
+ export port Port_update updateValue (  DEVICE_ID,  VALUE )
+ export port Port_read    readValue ( DEVICE_ID,  VALUE)
+ export port Port_create createValue ( DEVICE_ID,  VALUE)
+ export port Port_all       allValue ( DEVICE_ID,  VALUE )
+ export port Port_ordererVALUE ordererVALUE( VALUE  )
+
+ place START, OPERATION, ACTION, END
+ 
+ initial to START do { UPDATE = 0; READ = 0; CREATE=0; ALL=0; DENY=0; ALLOW=0;}
+ on updateValue from START to OPERATION       do { UPDATE = 1; printf("var int ACL IS RECEIVING VALUE %d FOR UPDATE \n",  VALUE );}
+ on readValue    from START to OPERATION       do { READ = 1; printf("var int ACL IS RECEIVING VALUE %d FOR READ \n",  VALUE );}
+ on createValue from START to OPERATION       do { CREATE = 1; printf("var int ACL IS RECEIVING VALUE %d FOR CREATE \n",  VALUE );}
+ on allValue       from START to OPERATION       do { ALL = 1; printf("var int ACL IS RECEIVING VALUE %d FOR ALL \n",  VALUE );}
+
+ on p0 from OPERATION to ACTION do {
+			if (DEVICE_ID==0 && UPDATE==1 ) then ALLOW=1; DENY=0; fi 
+			if (DEVICE_ID !=0 && UPDATE==1 ) then DENY  =1;  ALLOW=0; fi 
+
+}
+//ordererBlock
+ on ordererVALUE from ACTION to START provided (ALLOW ==1) do { 
+		printf("var int ACL IS ALLOWING DEVICE ACCESS %d FOR ACTION \n",DEVICE_ID,  VALUE );
+		printf("var int d.%d.allow %d\n",  DEVICE_ID, ALLOW );
+		printf("var int d.%d.deny %d\n",  DEVICE_ID, DENY );
+UPDATE = 0; READ = 0; CREATE=0; ALL=0; DENY=0; ALLOW=0;
+		}
+
+ on p1 from ACTION to START provided (DENY   ==1) do {
+		printf("var int ACL IS DENYING DEVICE ACCESS %d FOR ACTION \n",DEVICE_ID,  VALUE );
+		printf("var int d.%d.allow %d\n",  DEVICE_ID, ALLOW );
+		printf("var int d.%d.deny %d\n",   DEVICE_ID, DENY );
+UPDATE = 0; READ = 0; CREATE=0; ALL=0; DENY=0; ALLOW=0;
+}
+
+end
+
+atom type SmartContract ()
+
+ data int VALUE
+ data int BLOCK
+
+ data int DENY
+ data int ALLOW
+
+ port Port_t p0()
+ port Port_t p1()
+
+ export port Port_ordererVALUE ordererVALUE( VALUE  )
+
+ export port Port_ordererBlock ordererBlock( BLOCK  )
+
+ place START, VALIDATION
+
+ 
+ initial to START do { DENY=0; ALLOW=0;}
+
+ on ordererVALUE from START to VALIDATION do { 
+
+	if (VALUE==0  ) then ALLOW=0; DENY=1; BLOCK = readBlock();fi  
+	if (VALUE>0  )   then ALLOW=1; DENY=0;  fi  
+
+
+	}
+
+ on ordererBlock from VALIDATION to START provided (ALLOW==1) do {  
+
+		printf("var int SMARTCONTRACT IS ALLOWING VALUE %d \n",VALUE );
+		printf("var int S.allow %d\n",  ALLOW );
+		printf("var int S.deny %d\n",  DENY );
+
+DENY=0; ALLOW=0;}
+
+ on p0 from VALIDATION to START provided (DENY==1) do {  
+		printf("var int SMARTCONTRACT IS DENYING VALUE %d \n",VALUE );
+		printf("var int S.allow %d\n",  ALLOW );
+		printf("var int S.deny %d\n",  DENY );
+
+DENY=0; ALLOW=0;}
+
+end
+
+atom type Orderer()
+ data int NETWORK_VIEW
+ data int PRIMARY_NODE
+ data int MAX_NODES
+ data int BLOCK
+ data int id
+ port Port_t p0()
+ port Port_t p1()
+
+
+ export port Port_ordererBlock ordererBlock( BLOCK  )
+
+ export port Port_elected sendElected(PRIMARY_NODE, NETWORK_VIEW)
+
+ export port Port_blockreader sendBlock(BLOCK)
+
+ export port Port_faulty sendFaulty( )
+
+ place START, BEFORESTART, START1,ELECT, BLOCKNEW, END, FAULTY
+
+ initial to BEFORESTART do {
+	NETWORK_VIEW =0;
+	PRIMARY_NODE  =0;
+	MAX_NODES =3;
+	BLOCK = readBlock();
+	id=0;
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n",  PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n",  NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+	}
+ on ordererBlock from BEFORESTART to  START  do{ 	
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("ORDERER : FAILURE DETECTED FOR BLOCK  %f  \n", BLOCK); }   
+
+
+ on sendFaulty from BEFORESTART to  FAULTY  do{ 	
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("ORDERER : FAILURE DETECTED FOR BLOCK  %f  \n", BLOCK); }   
+
+
+ on p0 from FAULTY to BEFORESTART provided (NETWORK_VIEW >= MAX_NODES-1) do{
+
+	NETWORK_VIEW = NETWORK_VIEW+1;
+	PRIMARY_NODE  =  modulo( NETWORK_VIEW, (MAX_NODES) );
+
+	//BLOCK = readBlock();
+
+	printf("var int PRIMARY_NODE  %f\n", PRIMARY_NODE);
+	printf("var int NETWORK_VIEW %f\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+  }  
+
+ on p1 from FAULTY to BEFORESTART provided (NETWORK_VIEW < MAX_NODES-1) do{
+	PRIMARY_NODE  =  PRIMARY_NODE +1 ;
+	NETWORK_VIEW = NETWORK_VIEW +1 ;
+	//BLOCK = readBlock();
+	printf("var int PRIMARY_NODE  %f\n", PRIMARY_NODE);
+	printf("var int NETWORK_VIEW %f\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+  }    
+
+ on sendElected from START to  BLOCKNEW do{ 	
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+	printf("var int BLOCK  %f IS AVAILABLE \n", BLOCK); }      
+
+ on sendBlock from BLOCKNEW to  BEFORESTART do{
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+}     
+
+end
+
+//connector
+connector type ElectionTransmitter(Port_elected orderer, Port_elected peer0, Port_elected peer1, Port_elected peer2)
+  define orderer peer0 peer1 peer2
+
+  on orderer peer0 peer1 peer2  down { peer0.PRIMARY_NODE = orderer.PRIMARY_NODE; peer0.NETWORK_VIEW = orderer.NETWORK_VIEW; 
+				      peer1.PRIMARY_NODE = orderer.PRIMARY_NODE; peer1.NETWORK_VIEW = orderer.NETWORK_VIEW;
+				      peer2.PRIMARY_NODE = orderer.PRIMARY_NODE; peer2.NETWORK_VIEW = orderer.NETWORK_VIEW;
+}
+
+  end
+
+//connector
+connector type BlockTransmitter(Port_blockreader orderer, Port_blockreader peer0, Port_blockreader peer1, Port_blockreader peer2)
+  define orderer peer0'  peer1' peer2'
+
+  on  peer0 orderer down { peer0.BLOCK = orderer.BLOCK; }
+
+  on  peer1 orderer down { peer1.BLOCK = orderer.BLOCK; }
+
+  on  peer2 orderer down { peer2.BLOCK = orderer.BLOCK; }
+
+  end
+
+//connector preprepare
+connector type MessagePreprepare(Port_preprepare sender, Port_preprepare receiver0, Port_preprepare receiver1)
+  define sender receiver0 receiver1
+
+  on sender receiver0 receiver1 down {receiver0.BLOCK = sender.BLOCK;  receiver1.BLOCK = sender.BLOCK;  }
+
+  end
+
+//connector prepare
+connector type MessagePrepare(Port_prepare sender, Port_prepare receiver0, Port_prepare receiver1)
+  define sender receiver0 receiver1
+
+  on sender receiver0 receiver1 down {  }
+
+  end
+
+//connector prepare
+connector type MessageCommit(Port_commit sender, Port_commit receiver0, Port_commit receiver1)
+  define sender receiver0 receiver1
+
+  on sender receiver0  receiver1 down {  }
+
+  end
+
+//connector reply
+connector type MessageReply(Port_reply sender, Port_reply receiver0 , Port_reply receiver1)
+  define sender receiver0  receiver1
+
+  on sender receiver0 receiver1 down {  }
+
+  end
+
+//connector view change
+connector type MessageViewChange(Port_viewchange sender, Port_viewchange receiver0, Port_viewchange receiver1)
+  define sender receiver0 receiver1
+
+  on sender receiver0 receiver1 down {  }
+
+  end
+
+//connector faulty
+connector type MessageFaulty(Port_faulty orderer, Port_faulty peer0, Port_faulty peer1 , Port_faulty peer2)
+  define orderer peer0 peer1 peer2
+
+  on orderer peer0 peer1 peer2 down {  }
+
+  end
+
+//PEER DEFINITION
+atom type Peer(int id)
+ data int PEER_ID
+ data int PRIMARY_NODE
+ data int NETWORK_VIEW
+ data int BLOCK
+ data int RECEIVEDPREPARE
+ data int QUORUM
+ data int SENDPREPARE
+ data int SENDCOMMIT
+ data int RECEIVEDCOMMIT
+ data int CHECKED
+ data int CHANGEVIEW
+ data int RECEIVEDCHANGEVIEW
+
+ export port Port_elected receiveElected(PRIMARY_NODE, NETWORK_VIEW)
+
+ export port Port_blockreader receiveBlock(BLOCK)
+
+ export port Port_preprepare sendPreprepare (BLOCK)
+
+ export port Port_preprepare receivePreprepare (BLOCK)
+
+ export port Port_prepare sendPrepare ( )
+
+ export port Port_prepare receivePrepare ( )
+
+ export port Port_commit sendCommit ( )
+
+ export port Port_commit receiveCommit ( )
+
+ export port Port_reply sendReply ( )
+
+ export port Port_reply receiveReply ( )
+
+ export port Port_faulty sendFaulty( )
+
+ export port Port_viewchange sendViewChange()
+
+ export port Port_viewchange receiveViewChange()
+
+
+ port Port_t p0()
+ port Port_t p1()
+ port Port_t p2()
+ port Port_t p3()
+ port Port_t p4()
+ port Port_t p5()
+
+ place START, CHECKELECTED, ELECTED, END, BLOCKNEW, PREPREPARE, PREPARE, CHECKING, CHECKINGVALID, COMMITTING, FINISHED, VIEWCHANGE
+
+ initial to START do { PEER_ID = id; RECEIVEDPREPARE = 0; QUORUM=2; SENDPREPARE=0;SENDCOMMIT=0; RECEIVEDCOMMIT=0; CHANGEVIEW=0; RECEIVEDCHANGEVIEW=0;}
+
+
+ on receiveElected from START to CHECKELECTED do{ 
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+}
+
+
+ on p0 from CHECKELECTED to ELECTED provided (PEER_ID ==PRIMARY_NODE) do { printf("var int PEER_ID %f IS ELECTED\n", PEER_ID);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+ on receiveBlock from ELECTED to BLOCKNEW do { 	printf("var int BLOCK  %f IS RECEIVED IN  PRIMARY_NODE \n", BLOCK);
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+
+
+
+
+ on sendPreprepare from BLOCKNEW to PREPARE do {printf("var int PEER  %f IS SENDING PREPREPARE MESSAGE\n", PEER_ID);	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+
+ on p1 from CHECKELECTED to PREPREPARE provided (PEER_ID !=PRIMARY_NODE) do {	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+ }
+
+ on receivePreprepare from PREPREPARE to PREPARE  do
+ {printf("var int PEER  %f IS RECEIVING PREPREPARE MESSAGE\n", PEER_ID); 
+   printf("var int BLOCK  %f IS RECEIVED IN BACKUP PEER %f\n", BLOCK, PEER_ID );	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+
+on sendPrepare     from PREPARE  to PREPARE provided (SENDPREPARE==0) do { printf("var int PEER  %f IS SENDING PREPARE MESSAGE\n", PEER_ID); SENDPREPARE=1; 	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+on receivePrepare from PREPARE  to PREPARE provided (RECEIVEDPREPARE<QUORUM) do { printf("var int PEER  %f IS RECEIVING PREPARE MESSAGE\n", PEER_ID);
+											 RECEIVEDPREPARE = RECEIVEDPREPARE +1;					
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+on p2 from PREPARE  to CHECKING provided (RECEIVEDPREPARE>=QUORUM && SENDPREPARE==1 ) do{ CHECKED = checkBlock(BLOCK);
+				 printf("var int PEER  %d IS CHECKING BLOCK %d WITH VALUE EQUALS %d \n", PEER_ID, BLOCK, CHECKED );
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+ }
+
+
+on p3 from CHECKING  to VIEWCHANGE provided (CHECKED==0)  do{ 
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+ }
+
+on p4 from CHECKING  to COMMITTING    provided (CHECKED==1)  do{ 
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+ }
+
+//COMMIT
+on sendCommit     from COMMITTING to COMMITTING provided (SENDCOMMIT==0) do { printf("var int PEER  %f IS SENDING COMMIT MESSAGE\n", PEER_ID); SENDCOMMIT=1;
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+ }
+
+on receiveCommit from COMMITTING to COMMITTING provided (RECEIVEDCOMMIT<QUORUM) do { RECEIVEDCOMMIT = RECEIVEDCOMMIT +1; printf("var int PEER  %f IS RECEIVING COMMIT MESSAGE\n", PEER_ID); 
+
+	 printf("var int PEER %d RECEIVEDCOMMIT  %d QUORUM %d \n", PEER_ID, RECEIVEDCOMMIT, QUORUM); 
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+}
+
+//REPLY
+on sendReply from COMMITTING to FINISHED provided  (RECEIVEDCOMMIT>=QUORUM && SENDCOMMIT==1 && PEER_ID !=PRIMARY_NODE ) do { printf("var int PEER  %f IS SENDING REPLY MESSAGE\n", PEER_ID); 
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+ }
+
+on receiveReply from COMMITTING to FINISHED provided  (RECEIVEDCOMMIT>=QUORUM && SENDCOMMIT==1 && PEER_ID ==PRIMARY_NODE ) do { printf("var int PEER  %f IS RECEIVING REPLY MESSAGE\n", PEER_ID);  
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+}
+
+//VIEWCHANGE
+on sendViewChange from VIEWCHANGE to VIEWCHANGE provided (CHANGEVIEW== 0) do { printf("var int PEER  %f IS SENDING VIEW CHANGE\n", PEER_ID); CHANGEVIEW=1;  
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+}
+
+on receiveViewChange from VIEWCHANGE to VIEWCHANGE provided (RECEIVEDCHANGEVIEW<QUORUM) do { RECEIVEDCHANGEVIEW = RECEIVEDCHANGEVIEW +1;  printf("var int PEER  %f IS RECEIVING CHANGEVIEW MESSAGE\n", PEER_ID); 
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+on sendFaulty from VIEWCHANGE to START provided  (RECEIVEDCHANGEVIEW>=QUORUM && CHANGEVIEW==1) do {printf("var int PEER  %f IS SENDING FAULTY BLOCK COMMITTMENT\n", PEER_ID);  
+
+SENDCOMMIT=0;
+RECEIVEDCHANGEVIEW =0;
+CHANGEVIEW=0;
+RECEIVEDCOMMIT =0;
+CHECKED=0;
+RECEIVEDPREPARE = 0;
+SENDPREPARE=0;
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+}
+end
+
+
+compound type Compound()
+    component Device device( 0 )
+    component Acl acl(  )
+    component SmartContract smart ( )
+    component Orderer orderer( )
+    component Peer peer0(0)
+    component Peer peer1(1)
+    component Peer peer2(2)
+
+
+    connector   connupdateValue     updatevalue (device.updateValue,  acl.updateValue)
+
+    connector   connordererVALUE  orderervalue (acl.ordererVALUE,  smart.ordererVALUE)
+
+    connector   connordererBlock    ordererblock (smart.ordererBlock,  orderer.ordererBlock)
+
+connector   ElectionTransmitter election (orderer.sendElected,  peer0.receiveElected, peer1.receiveElected, peer2.receiveElected)
+
+    connector   BlockTransmitter     block_transmitter (orderer.sendBlock,  peer0.receiveBlock, peer1.receiveBlock , peer2.receiveBlock)
+
+
+    connector   MessagePreprepare mess_preprepare012 (peer0.sendPreprepare, peer1.receivePreprepare, peer2.receivePreprepare )
+
+    connector   MessagePreprepare mess_preprepare102 (peer1.sendPreprepare, peer0.receivePreprepare, peer2.receivePreprepare )
+
+    connector   MessagePreprepare mess_preprepare210 (peer2.sendPreprepare, peer0.receivePreprepare, peer1.receivePreprepare )
+
+
+
+    connector   MessagePrepare mess_prepare012 (peer0.sendPrepare, peer1.receivePrepare , peer2.receivePrepare)
+
+    connector   MessagePrepare mess_prepare102 (peer1.sendPrepare, peer0.receivePrepare , peer2.receivePrepare )
+
+    connector   MessagePrepare mess_prepare210 (peer2.sendPrepare, peer0.receivePrepare , peer1.receivePrepare )
+
+
+
+    connector   MessageCommit mess_commit012 (peer0.sendCommit, peer1.receiveCommit, peer2.receiveCommit )
+
+    connector   MessageCommit mess_commit102 (peer1.sendCommit, peer0.receiveCommit, peer2.receiveCommit )
+
+    connector   MessageCommit mess_commit210 (peer2.sendCommit, peer0.receiveCommit, peer1.receiveCommit )
+
+
+    connector   MessageReply mess_reply012 (peer0.receiveReply, peer1.sendReply, peer2.sendReply)
+
+    connector   MessageReply mess_reply102 (peer1.receiveReply, peer0.sendReply, peer2.sendReply)
+
+    connector   MessageReply mess_reply210 (peer2.receiveReply, peer0.sendReply, peer1.sendReply)
+
+
+    connector   MessageViewChange mess_viewchange012 (peer0.sendViewChange, peer1.receiveViewChange, peer2.receiveViewChange)
+
+    connector   MessageViewChange mess_viewchange102 (peer1.sendViewChange, peer0.receiveViewChange, peer2.receiveViewChange)
+
+    connector   MessageViewChange mess_viewchange210 (peer2.sendViewChange, peer0.receiveViewChange, peer1.receiveViewChange)
+
+
+    connector   MessageFaulty mess_faulty(orderer.sendFaulty, peer0.sendFaulty, peer1.sendFaulty, peer2.sendFaulty)
+
+
+
+  end
+
+
+end

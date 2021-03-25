@@ -1,0 +1,477 @@
+
+
+
+
+
+
+
+atom type Orderer()
+ data int NETWORK_VIEW
+ data int PRIMARY_NODE
+ data int MAX_NODES
+ data int BLOCK
+ data int id
+ port Port_t p0()
+ port Port_t p1()
+ export port Port_elected sendElected(PRIMARY_NODE, NETWORK_VIEW)
+
+ export port Port_blockreader sendBlock(BLOCK)
+
+ export port Port_faulty sendFaulty( )
+
+ place START, START1,ELECT, BLOCKNEW, END, FAULTY
+
+ initial to START do {
+	NETWORK_VIEW =0;
+	PRIMARY_NODE  =0;
+	MAX_NODES =3;
+	BLOCK = readBlock();
+	id=0;
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n",  PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n",  NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+	}
+ on sendFaulty from START to  FAULTY  do{ 	
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("ORDERER : FAILURE DETECTED FOR BLOCK  %f  \n", BLOCK); }   
+
+
+ on p0 from FAULTY to START provided (NETWORK_VIEW >= MAX_NODES-1) do{
+
+	NETWORK_VIEW = NETWORK_VIEW+1;
+	PRIMARY_NODE  =  modulo( NETWORK_VIEW, (MAX_NODES) );
+
+	BLOCK = readBlock();
+
+	printf("var int PRIMARY_NODE  %f\n", PRIMARY_NODE);
+	printf("var int NETWORK_VIEW %f\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+  }  
+
+ on p1 from FAULTY to START provided (NETWORK_VIEW < MAX_NODES-1) do{
+	PRIMARY_NODE  =  PRIMARY_NODE +1 ;
+	NETWORK_VIEW = NETWORK_VIEW +1 ;
+	BLOCK = readBlock();
+	printf("var int PRIMARY_NODE  %f\n", PRIMARY_NODE);
+	printf("var int NETWORK_VIEW %f\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+  }    
+
+ on sendElected from START to  BLOCKNEW do{ 	
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+	printf("var int BLOCK  %f IS AVAILABLE \n", BLOCK); }      
+
+ on sendBlock from BLOCKNEW to  START do{
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+}     
+
+end
+
+//connector
+connector type ElectionTransmitter(Port_elected orderer, Port_elected peer0, Port_elected peer1, Port_elected peer2)
+  define orderer peer0 peer1 peer2
+
+  on orderer peer0 peer1 peer2  down { peer0.PRIMARY_NODE = orderer.PRIMARY_NODE; peer0.NETWORK_VIEW = orderer.NETWORK_VIEW; 
+				      peer1.PRIMARY_NODE = orderer.PRIMARY_NODE; peer1.NETWORK_VIEW = orderer.NETWORK_VIEW;
+				      peer2.PRIMARY_NODE = orderer.PRIMARY_NODE; peer2.NETWORK_VIEW = orderer.NETWORK_VIEW;
+}
+
+  end
+
+//connector
+connector type BlockTransmitter(Port_blockreader orderer, Port_blockreader peer0, Port_blockreader peer1, Port_blockreader peer2)
+  define orderer peer0'  peer1' peer2'
+
+  on  peer0 orderer down { peer0.BLOCK = orderer.BLOCK; }
+
+  on  peer1 orderer down { peer1.BLOCK = orderer.BLOCK; }
+
+  on  peer2 orderer down { peer2.BLOCK = orderer.BLOCK; }
+
+  end
+
+//connector preprepare
+connector type MessagePreprepare(Port_preprepare sender, Port_preprepare receiver0, Port_preprepare receiver1)
+  define sender receiver0 receiver1
+
+  on sender receiver0 receiver1 down {receiver0.BLOCK = sender.BLOCK;  receiver1.BLOCK = sender.BLOCK;  }
+
+  end
+
+//connector prepare
+connector type MessagePrepare(Port_prepare sender, Port_prepare receiver0, Port_prepare receiver1)
+  define sender receiver0 receiver1
+
+  on sender receiver0 receiver1 down {  }
+
+  end
+
+//connector prepare
+connector type MessageCommit(Port_commit sender, Port_commit receiver0, Port_commit receiver1)
+  define sender receiver0 receiver1
+
+  on sender receiver0  receiver1 down {  }
+
+  end
+
+//connector reply
+connector type MessageReply(Port_reply sender, Port_reply receiver0 , Port_reply receiver1)
+  define sender receiver0  receiver1
+
+  on sender receiver0 receiver1 down {  }
+
+  end
+
+//connector view change
+connector type MessageViewChange(Port_viewchange sender, Port_viewchange receiver0, Port_viewchange receiver1)
+  define sender receiver0 receiver1
+
+  on sender receiver0 receiver1 down {  }
+
+  end
+
+//connector faulty
+connector type MessageFaulty(Port_faulty orderer, Port_faulty peer0, Port_faulty peer1 , Port_faulty peer2)
+  define orderer peer0 peer1 peer2
+
+  on orderer peer0 peer1 peer2 down {  }
+
+  end
+
+//PEER DEFINITION
+atom type Peer(int id)
+ data int PEER_ID
+ data int PRIMARY_NODE
+ data int NETWORK_VIEW
+ data int BLOCK
+ data int RECEIVEDPREPARE
+ data int QUORUM
+ data int SENDPREPARE
+ data int SENDCOMMIT
+ data int RECEIVEDCOMMIT
+ data int CHECKED
+ data int CHANGEVIEW
+ data int RECEIVEDCHANGEVIEW
+
+ export port Port_elected receiveElected(PRIMARY_NODE, NETWORK_VIEW)
+
+ export port Port_blockreader receiveBlock(BLOCK)
+
+ export port Port_preprepare sendPreprepare (BLOCK)
+
+ export port Port_preprepare receivePreprepare (BLOCK)
+
+ export port Port_prepare sendPrepare ( )
+
+ export port Port_prepare receivePrepare ( )
+
+ export port Port_commit sendCommit ( )
+
+ export port Port_commit receiveCommit ( )
+
+ export port Port_reply sendReply ( )
+
+ export port Port_reply receiveReply ( )
+
+ export port Port_faulty sendFaulty( )
+
+ export port Port_viewchange sendViewChange()
+
+ export port Port_viewchange receiveViewChange()
+
+
+ port Port_t p0()
+ port Port_t p1()
+ port Port_t p2()
+ port Port_t p3()
+ port Port_t p4()
+ port Port_t p5()
+
+ place START, CHECKELECTED, ELECTED, END, BLOCKNEW, PREPREPARE, PREPARE, CHECKING, CHECKINGVALID, COMMITTING, FINISHED, VIEWCHANGE
+
+ initial to START do { PEER_ID = id; RECEIVEDPREPARE = 0; QUORUM=2; SENDPREPARE=0;SENDCOMMIT=0; RECEIVEDCOMMIT=0; CHANGEVIEW=0; RECEIVEDCHANGEVIEW=0;}
+
+
+ on receiveElected from START to CHECKELECTED do{ 
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+}
+
+
+ on p0 from CHECKELECTED to ELECTED provided (PEER_ID ==PRIMARY_NODE) do { printf("var int PEER_ID %f IS ELECTED\n", PEER_ID);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+ on receiveBlock from ELECTED to BLOCKNEW do { 	printf("var int BLOCK  %f IS RECEIVED IN  PRIMARY_NODE \n", BLOCK);
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+
+
+
+
+ on sendPreprepare from BLOCKNEW to PREPARE do {printf("var int PEER  %f IS SENDING PREPREPARE MESSAGE\n", PEER_ID);	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+
+ on p1 from CHECKELECTED to PREPREPARE provided (PEER_ID !=PRIMARY_NODE) do {	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+ }
+
+ on receivePreprepare from PREPREPARE to PREPARE  do
+ {printf("var int PEER  %f IS RECEIVING PREPREPARE MESSAGE\n", PEER_ID); 
+   printf("var int BLOCK  %f IS RECEIVED IN BACKUP PEER %f\n", BLOCK, PEER_ID );	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+
+on sendPrepare     from PREPARE  to PREPARE provided (SENDPREPARE==0) do { printf("var int PEER  %f IS SENDING PREPARE MESSAGE\n", PEER_ID); SENDPREPARE=1; 	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+on receivePrepare from PREPARE  to PREPARE provided (RECEIVEDPREPARE<QUORUM) do { printf("var int PEER  %f IS RECEIVING PREPARE MESSAGE\n", PEER_ID);
+											 RECEIVEDPREPARE = RECEIVEDPREPARE +1;					
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+on p2 from PREPARE  to CHECKING provided (RECEIVEDPREPARE>=QUORUM && SENDPREPARE==1 ) do{ CHECKED = checkBlock(BLOCK);
+				 printf("var int PEER  %d IS CHECKING BLOCK %d WITH VALUE EQUALS %d \n", PEER_ID, BLOCK, CHECKED );
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+ }
+
+
+on p3 from CHECKING  to VIEWCHANGE provided (CHECKED==0)  do{ 
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+ }
+
+on p4 from CHECKING  to COMMITTING    provided (CHECKED==1)  do{ 
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+ }
+
+//COMMIT
+on sendCommit     from COMMITTING to COMMITTING provided (SENDCOMMIT==0) do { printf("var int PEER  %f IS SENDING COMMIT MESSAGE\n", PEER_ID); SENDCOMMIT=1;
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+ }
+
+on receiveCommit from COMMITTING to COMMITTING provided (RECEIVEDCOMMIT<QUORUM) do { RECEIVEDCOMMIT = RECEIVEDCOMMIT +1; printf("var int PEER  %f IS RECEIVING COMMIT MESSAGE\n", PEER_ID); 
+
+	 printf("var int PEER %d RECEIVEDCOMMIT  %d QUORUM %d \n", PEER_ID, RECEIVEDCOMMIT, QUORUM); 
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+}
+
+//REPLY
+on sendReply from COMMITTING to FINISHED provided  (RECEIVEDCOMMIT>=QUORUM && SENDCOMMIT==1 && PEER_ID !=PRIMARY_NODE ) do { printf("var int PEER  %f IS SENDING REPLY MESSAGE\n", PEER_ID); 
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+ }
+
+on receiveReply from COMMITTING to FINISHED provided  (RECEIVEDCOMMIT>=QUORUM && SENDCOMMIT==1 && PEER_ID ==PRIMARY_NODE ) do { printf("var int PEER  %f IS RECEIVING REPLY MESSAGE\n", PEER_ID);  
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+}
+
+//VIEWCHANGE
+on sendViewChange from VIEWCHANGE to VIEWCHANGE provided (CHANGEVIEW== 0) do { printf("var int PEER  %f IS SENDING VIEW CHANGE\n", PEER_ID); CHANGEVIEW=1;  
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+}
+
+on receiveViewChange from VIEWCHANGE to VIEWCHANGE provided (RECEIVEDCHANGEVIEW<QUORUM) do { RECEIVEDCHANGEVIEW = RECEIVEDCHANGEVIEW +1;  printf("var int PEER  %f IS RECEIVING CHANGEVIEW MESSAGE\n", PEER_ID); 
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+}
+
+on sendFaulty from VIEWCHANGE to START provided  (RECEIVEDCHANGEVIEW>=QUORUM && CHANGEVIEW==1) do {printf("var int PEER  %f IS SENDING FAULTY BLOCK COMMITTMENT\n", PEER_ID);  
+
+SENDCOMMIT=0;
+RECEIVEDCHANGEVIEW =0;
+CHANGEVIEW=0;
+RECEIVEDCOMMIT =0;
+CHECKED=0;
+RECEIVEDPREPARE = 0;
+SENDPREPARE=0;
+
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.elected %d\n", PRIMARY_NODE);
+	/////////////////////////////////////////////////////////////////////////////////
+	printf("var int c.view    %d\n", NETWORK_VIEW);
+	/////////////////////////////////////////////////////////////////////////////////
+
+
+
+}
+end
+
+
+  compound type Compound()
+    component Orderer orderer( )
+    component Peer peer0(0)
+    component Peer peer1(1)
+    component Peer peer2(2)
+
+    connector   ElectionTransmitter election (orderer.sendElected,  peer0.receiveElected, peer1.receiveElected, peer2.receiveElected)
+
+    connector   BlockTransmitter     block_transmitter (orderer.sendBlock,  peer0.receiveBlock, peer1.receiveBlock , peer2.receiveBlock)
+
+
+    connector   MessagePreprepare mess_preprepare012 (peer0.sendPreprepare, peer1.receivePreprepare, peer2.receivePreprepare )
+
+    connector   MessagePreprepare mess_preprepare102 (peer1.sendPreprepare, peer0.receivePreprepare, peer2.receivePreprepare )
+
+    connector   MessagePreprepare mess_preprepare210 (peer2.sendPreprepare, peer0.receivePreprepare, peer1.receivePreprepare )
+
+
+
+    connector   MessagePrepare mess_prepare012 (peer0.sendPrepare, peer1.receivePrepare , peer2.receivePrepare)
+
+    connector   MessagePrepare mess_prepare102 (peer1.sendPrepare, peer0.receivePrepare , peer2.receivePrepare )
+
+    connector   MessagePrepare mess_prepare210 (peer2.sendPrepare, peer0.receivePrepare , peer1.receivePrepare )
+
+
+
+    connector   MessageCommit mess_commit012 (peer0.sendCommit, peer1.receiveCommit, peer2.receiveCommit )
+
+    connector   MessageCommit mess_commit102 (peer1.sendCommit, peer0.receiveCommit, peer2.receiveCommit )
+
+    connector   MessageCommit mess_commit210 (peer2.sendCommit, peer0.receiveCommit, peer1.receiveCommit )
+
+
+    connector   MessageReply mess_reply012 (peer0.receiveReply, peer1.sendReply, peer2.sendReply)
+
+    connector   MessageReply mess_reply102 (peer1.receiveReply, peer0.sendReply, peer2.sendReply)
+
+    connector   MessageReply mess_reply210 (peer2.receiveReply, peer0.sendReply, peer1.sendReply)
+
+
+    connector   MessageViewChange mess_viewchange012 (peer0.sendViewChange, peer1.receiveViewChange, peer2.receiveViewChange)
+
+    connector   MessageViewChange mess_viewchange102 (peer1.sendViewChange, peer0.receiveViewChange, peer2.receiveViewChange)
+
+    connector   MessageViewChange mess_viewchange210 (peer2.sendViewChange, peer0.receiveViewChange, peer1.receiveViewChange)
+
+
+    connector   MessageFaulty mess_faulty(orderer.sendFaulty, peer0.sendFaulty, peer1.sendFaulty, peer2.sendFaulty)
+
+
+
+  end
