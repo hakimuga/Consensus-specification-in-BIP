@@ -1,4 +1,4 @@
-# Consensus-protoco-specification-in-BIP
+# Consensus-protocol-specification-in-BIP
 Practical Byzantine Fault Tolerance specification of consensus protocol in BIP
 
 
